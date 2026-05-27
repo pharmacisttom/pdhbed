@@ -1,0 +1,14 @@
+pdhbed/
+├── config/
+│   └── db.php           # เชื่อมต่อฐานข้อมูล
+├── css/                 # (ถ้ามี Custom CSS)
+├── js/                  # (ถ้ามี Custom JS)
+├── includes/
+│   └── functions.php    # ฟังก์ชั่นแปลงเงินบาทไทย และอื่นๆ
+├── api/
+│   └── get_patients.php # API สำหรับดึงข้อมูลผู้ป่วย (AJAX)
+├── login.php            # หน้า Login
+├── logout.php           # หน้า Logout
+├── index.php            # หน้าหลัก (Dashboard) แสดงสถานะเตียง
+├── export.php           # ส่งออก Excel
+└── setup.sql            # SQL สำหรับสร้างตาราง Log

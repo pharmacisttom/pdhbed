@@ -1,0 +1,13 @@
+# Local runtime/session files
+sess_*
+*.log
+
+# Local database credentials
+config/db.php
+api/db_connect_pdo.php
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
