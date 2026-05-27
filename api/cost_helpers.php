@@ -48,15 +48,17 @@ function load_patient_costs(PDO $pdo, array $patients) {
     }
 
     $tables = [
-        'drug' => 'ipd.drug_order_ipd',
-        'lab' => 'ipd.lab_order_ipd',
-        'xray' => 'ipd.xray_order_ipd',
-        'other' => 'ipd.other_order_ipd'
+        'drug' => ['table' => 'ipd.drug_order_ipd', 'where' => ''],
+        'lab' => ['table' => 'ipd.lab_order_ipd', 'where' => ''],
+        'xray' => ['table' => 'ipd.xray_order_ipd', 'where' => "AND COALESCE(status_xray, '') <> 'SXRAY0'"],
+        'other' => ['table' => 'ipd.other_order_ipd', 'where' => '']
     ];
 
-    foreach ($tables as $key => $table) {
+    foreach ($tables as $key => $config) {
+        $table = $config['table'];
+        $where = $config['where'];
         try {
-            $stmt = $pdo->query("SELECT an, SUM(price) AS total FROM {$table} WHERE an IN ({$inClause}) GROUP BY an");
+            $stmt = $pdo->query("SELECT an, SUM(price) AS total FROM {$table} WHERE an IN ({$inClause}) {$where} GROUP BY an");
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
                 $costs[$row['an']][$key] = (float)$row['total'];
             }
