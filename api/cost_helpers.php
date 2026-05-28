@@ -65,6 +65,37 @@ function load_patient_costs(PDO $pdo, array $patients) {
         } catch (Exception $e) { }
     }
 
+    // HIMPRO stores IPD food orders separately from charge rows. The billing
+    // screen adds 30 baht per food day when that date also has a room charge.
+    try {
+        $ipdFoodDailyRate = 30;
+        $stmt = $pdo->query("
+            SELECT f.an, COUNT(DISTINCT f.orderdate) * {$ipdFoodDailyRate} AS total
+            FROM ipd.foodipd f
+            WHERE f.an IN ({$inClause})
+              AND f.food IS NOT NULL
+              AND TRIM(f.food) <> ''
+              AND f.orderdate <> '0000-00-00'
+              AND EXISTS (
+                  SELECT 1
+                  FROM ipd.other_order_ipd o
+                  LEFT JOIN hos.otherlist ol ON o.codeother = ol.Code
+                  WHERE o.an = f.an
+                    AND o.orderdate = f.orderdate
+                    AND IF(o.to_grprice IS NULL OR o.to_grprice = '', ol.pricegroup, o.to_grprice) = '13'
+              )
+            GROUP BY f.an
+        ");
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $an = $row['an'];
+            $amount = (float)$row['total'];
+            if ($amount > 0) {
+                $costs[$an]['food_ipd'] = $amount;
+                $costs[$an]['other'] = ($costs[$an]['other'] ?? 0) + $amount;
+            }
+        }
+    } catch (Exception $e) { }
+
     // Lab results can originate from OPD/pre-admit workflows and may not have a
     // matching row in ipd.lab_order_ipd, while HIS still includes them in IPD cost.
     try {
