@@ -98,17 +98,74 @@ function load_patient_costs(PDO $pdo, array $patients) {
 
     $visitTable = build_patient_visit_table($pdo, $patients);
     if ($visitTable !== '') {
+        try {
+            $stmt = $pdo->query("
+                SELECT opd_result.an, SUM(opd_result.std_price) AS total
+                FROM (
+                    SELECT p.an, r.orderno, r.labcode, MAX(COALESCE(l.stdPrice, 0)) AS std_price
+                    FROM ({$visitTable}) p
+                    INNER JOIN opd.result_lab_opd r ON r.hn = p.hn
+                        AND r.regdate = p.regdate
+                        AND r.frequency = p.frequency
+                    LEFT JOIN hos.lablist l ON r.labcode = l.Code
+                    LEFT JOIN ipd.result_lab_ipd ipd_result ON ipd_result.an = p.an
+                        AND ipd_result.orderno = r.orderno
+                        AND ipd_result.labcode = r.labcode
+                    WHERE ipd_result.labcode IS NULL
+                    GROUP BY p.an, r.orderno, r.labcode
+                ) opd_result
+                GROUP BY opd_result.an
+            ");
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $an = $row['an'];
+                $amount = (float)$row['total'];
+                if ($amount > 0) {
+                    $costs[$an]['lab_opd_result'] = $amount;
+                    $costs[$an]['lab'] = ($costs[$an]['lab'] ?? 0) + $amount;
+                }
+            }
+        } catch (Exception $e) { }
+
+        try {
+            $stmt = $pdo->query("
+                SELECT duplicate_result.an, SUM(duplicate_result.extra_price) AS total
+                FROM (
+                    SELECT p.an,
+                           r.orderno,
+                           r.labcode,
+                           (COUNT(*) - 1) * MAX(COALESCE(l.stdPrice, 0)) AS extra_price
+                    FROM ({$visitTable}) p
+                    INNER JOIN ipd.result_lab_ipd r ON r.an = p.an
+                    LEFT JOIN hos.lablist l ON r.labcode = l.Code
+                    WHERE r.orderno LIKE 'INV%'
+                      AND r.labcode = '010054'
+                    GROUP BY p.an, r.orderno, r.labcode
+                    HAVING COUNT(*) > 1
+                ) duplicate_result
+                GROUP BY duplicate_result.an
+            ");
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $an = $row['an'];
+                $amount = (float)$row['total'];
+                if ($amount > 0) {
+                    $costs[$an]['lab_duplicate_result'] = $amount;
+                    $costs[$an]['lab'] = ($costs[$an]['lab'] ?? 0) + $amount;
+                }
+            }
+        } catch (Exception $e) { }
+
         $opdTables = [
-            ['key' => 'drug', 'table' => 'opd.drug_order_opd'],
-            ['key' => 'lab', 'table' => 'opd.lab_order_opd'],
-            ['key' => 'xray', 'table' => 'opd.xray_order_opd'],
-            ['key' => 'other', 'table' => 'opd.other_order_opd'],
-            ['key' => 'other', 'table' => 'opd.dent_order_opd']
+            ['key' => 'drug', 'table' => 'opd.drug_order_opd', 'ipd_table' => 'ipd.drug_order_ipd'],
+            ['key' => 'lab', 'table' => 'opd.lab_order_opd', 'ipd_table' => 'ipd.lab_order_ipd'],
+            ['key' => 'xray', 'table' => 'opd.xray_order_opd', 'ipd_table' => 'ipd.xray_order_ipd'],
+            ['key' => 'other', 'table' => 'opd.other_order_opd', 'ipd_table' => 'ipd.other_order_ipd'],
+            ['key' => 'other', 'table' => 'opd.dent_order_opd', 'ipd_table' => 'ipd.dent_order_ipd']
         ];
 
         foreach ($opdTables as $opdTable) {
             $key = $opdTable['key'];
             $table = $opdTable['table'];
+            $ipdTable = $opdTable['ipd_table'];
             try {
                 $stmt = $pdo->query("
                     SELECT p.an, SUM(o.price) AS total
@@ -117,6 +174,12 @@ function load_patient_costs(PDO $pdo, array $patients) {
                         AND o.regdate = p.regdate
                         AND o.frequency = p.frequency
                     WHERE (o.billno IS NULL OR TRIM(o.billno) = '')
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM {$ipdTable} io
+                          WHERE io.an = p.an
+                            AND io.orderno = o.orderno
+                      )
                     GROUP BY p.an
                 ");
                 while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
